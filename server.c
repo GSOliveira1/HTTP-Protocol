@@ -58,6 +58,7 @@ static void send_file(int c, const char *path) {
     fclose(f);
 }
 
+// Listagem (um nome por linha), com cabeçalho X-Dir-Listing: 1 para o cliente
 static void list_dir_stream(int c, const char *rel) {
     const char *hdr =
         "HTTP/1.0 200 OK\r\n"
@@ -86,7 +87,7 @@ static void handle(int c) {
     req[r] = '\0';
 
     char m[8], p[2048];
-    if (sscanf(req, "%7s %2047s %15s", m, p) != 2 || strcmp(m, "GET") != 0) {
+    if (sscanf(req, "%7s %2047s ", m, p) != 2 || strcmp(m, "GET") != 0) {
         send_text(c, 405, "Method Not Allowed", "405\n");
         close(c);
         return;

@@ -86,8 +86,14 @@ int main(int argc, char **argv) {
             hdr[hdr_len] = '\0';
 
             char *sep = strstr(hdr, "\r\n\r\n");
+            int off = 0;
+            if (sep) {
+                off = 4;
+            } else {
+                sep = strstr(hdr, "\n\n");
+                if (sep) off = 2;
+            }
             if (!sep) continue;
-            int off = 4;
 
             if (sscanf(hdr, "HTTP/%*d.%*d %d", &status) != 1 ||
                 status < 200 || status >= 300) {
@@ -99,6 +105,7 @@ int main(int argc, char **argv) {
                 is_listing = 1;
             }
 
+            // Corpo já disponível
             size_t body = hdr_len - (size_t)((sep - hdr) + off);
             if (is_listing) {
                 if (body) fwrite(sep + off, 1, body, stdout);
