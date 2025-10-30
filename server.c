@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <limits.h>
 
 static void sendall(int c, const void *buf, size_t len) {
     const char *p = (const char *)buf;
@@ -31,6 +32,38 @@ static void send_text(int c, int code, const char *reason, const char *body) {
     sendall(c, body, strlen(body));
 }
 
+static const char *mime_type_for(const char *path) {
+    const char *ext = strrchr(path, '.');
+    if (!ext) return "application/octet-stream";
+    ext++;
+    if (!strcasecmp(ext, "html") || !strcasecmp(ext, "htm")) return "text/html; charset=UTF-8";
+    if (!strcasecmp(ext, "txt")) return "text/plain; charset=UTF-8";
+    if (!strcasecmp(ext, "css")) return "text/css; charset=UTF-8";
+    if (!strcasecmp(ext, "js")) return "application/javascript";
+    if (!strcasecmp(ext, "json")) return "application/json";
+    if (!strcasecmp(ext, "png")) return "image/png";
+    if (!strcasecmp(ext, "jpg") || !strcasecmp(ext, "jpeg")) return "image/jpeg";
+    if (!strcasecmp(ext, "gif")) return "image/gif";
+    if (!strcasecmp(ext, "svg")) return "image/svg+xml";
+    if (!strcasecmp(ext, "pdf")) return "application/pdf";
+    return "application/octet-stream";
+}
+
+static int safe_path(const char *user_path, char *resolved, size_t size) {
+    if (!user_path || !*user_path) return snprintf(resolved, size, ".") < (int)size;
+    if (strstr(user_path, "..") || user_path[0] == '/') return 0;
+
+    char tmp[PATH_MAX];
+    size_t len = 0;
+    for (size_t i = 0; user_path[i] && len < sizeof(tmp) - 1; i++) {
+        if (user_path[i] == '/' && (i == 0 || user_path[i - 1] == '/')) continue;
+        tmp[len++] = user_path[i];
+    }
+    tmp[len] = '\0';
+
+    return snprintf(resolved, size, "%s", tmp[0] ? tmp : ".") < (int)size;
+}
+
 static void send_file(int c, const char *path) {
     struct stat st;
     if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) {
@@ -42,14 +75,17 @@ static void send_file(int c, const char *path) {
         send_text(c, 403, "Forbidden", "403\n");
         return;
     }
-    char h[256];
+
+    const char *mime = mime_type_for(path);
+    char h[512];
     int n = snprintf(h, sizeof(h),
                      "HTTP/1.0 200 OK\r\n"
-                     "Content-Type: application/octet-stream\r\n"
+                     "Content-Type: %s\r\n"
                      "Content-Length: %ld\r\n"
                      "Connection: close\r\n\r\n",
-                     (long)st.st_size);
+                     mime, (long)st.st_size);
     sendall(c, h, (size_t)n);
+
     char b[8192];
     size_t r;
     while ((r = fread(b, 1, sizeof(b), f)) > 0) {
@@ -85,48 +121,49 @@ static void handle(int c) {
     if (r <= 0) { close(c); return; }
     req[r] = '\0';
 
-    char m[8], p[2048];
-    if (sscanf(req, "%7s %2047s ", m, p) != 2 || strcmp(m, "GET") != 0) {
+    char m[8], p_raw[2048];
+    if (sscanf(req, "%7s %2047s ", m, p_raw) != 2 || strcmp(m, "GET") != 0) {
         send_text(c, 405, "Method Not Allowed", "405\n");
         close(c);
         return;
     }
 
-    if (p[0] == '/') memmove(p, p + 1, strlen(p));
-    char *q = strchr(p, '?');
+    if (p_raw[0] == '/') memmove(p_raw, p_raw + 1, strlen(p_raw));
+    char *q = strchr(p_raw, '?');
     if (q) *q = '\0';
 
-    if (strstr(p, "..")) {
+    char p_safe[PATH_MAX];
+    if (!safe_path(p_raw, p_safe, sizeof(p_safe))) {
         send_text(c, 403, "Forbidden", "403\n");
         close(c);
         return;
     }
 
-    if (!*p) {
+    if (!*p_safe) {
         struct stat st;
         if (stat("index.html", &st) == 0 && S_ISREG(st.st_mode)) {
             send_file(c, "index.html");
         } else {
-            list_dir_stream(c, "");
+            list_dir_stream(c, ".");
         }
         close(c);
         return;
     }
 
     struct stat st;
-    if (stat(p, &st) == 0 && S_ISDIR(st.st_mode)) {
-        char idx[2200];
-        snprintf(idx, sizeof(idx), "%s/index.html", p);
+    if (stat(p_safe, &st) == 0 && S_ISDIR(st.st_mode)) {
+        char idx[PATH_MAX];
+        snprintf(idx, sizeof(idx), "%s/index.html", p_safe);
         if (stat(idx, &st) == 0 && S_ISREG(st.st_mode)) {
             send_file(c, idx);
         } else {
-            list_dir_stream(c, p);
+            list_dir_stream(c, p_safe);
         }
         close(c);
         return;
     }
 
-    send_file(c, p);
+    send_file(c, p_safe);
     close(c);
 }
 
