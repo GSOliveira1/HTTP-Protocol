@@ -58,7 +58,6 @@ static void send_file(int c, const char *path) {
     fclose(f);
 }
 
-// Listagem (um nome por linha), com cabeçalho X-Dir-Listing: 1 para o cliente
 static void list_dir_stream(int c, const char *rel) {
     const char *hdr =
         "HTTP/1.0 200 OK\r\n"
@@ -162,7 +161,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    printf("Servidor em http://0.0.0.0:%d  servindo: %s\n", port, argv[1]);
+    printf("Servidor em http://localhost:%d  servindo: %s\n", port, argv[1]);
 
     for (;;) {
         struct sockaddr_in ca;

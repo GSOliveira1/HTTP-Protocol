@@ -105,7 +105,6 @@ int main(int argc, char **argv) {
                 is_listing = 1;
             }
 
-            // Corpo já disponível
             size_t body = hdr_len - (size_t)((sep - hdr) + off);
             if (is_listing) {
                 if (body) fwrite(sep + off, 1, body, stdout);
