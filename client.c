@@ -128,7 +128,7 @@ int main(int argc, char **argv) {
 
     if (status >= 200 && status < 300) {
         if (!is_listing) {
-            printf("salvo: %s\n", file);
+            printf("Salvo: %s (HTTP %d)\n", file, status);
         }
         return 0;
     }
