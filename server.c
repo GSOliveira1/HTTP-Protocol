@@ -95,25 +95,45 @@ static void send_file(int c, const char *path) {
     fclose(f);
 }
 
-static void list_dir_stream(int c, const char *rel) {
+void list_dir_stream(int c, const char *rel) {
+    // Cabeçalho HTTP
     const char *hdr =
         "HTTP/1.0 200 OK\r\n"
-        "Content-Type: text/plain; charset=UTF-8\r\n"
+        "Content-Type: text/html; charset=UTF-8\r\n"
         "X-Dir-Listing: 1\r\n"
         "Connection: close\r\n\r\n";
     sendall(c, hdr, strlen(hdr));
 
-    DIR *d = opendir(*rel ? rel : ".");
-    if (!d) return;
+    // Abre diretório
+    DIR *d = opendir((rel && *rel) ? rel : ".");
+    if (!d) {
+        send_text(c, 403, "Forbidden", "403\n");
+        return;
+    }
 
+    // Início do HTML
+    char buf[8192];
+    int n = snprintf(buf, sizeof(buf),
+        "<html><head><title>Itens do diretorio</title></head>"
+        "<body><h2>Itens do diretorio</h2><ul>");
+    sendall(c, buf, (size_t)n);
+
+    // Lista arquivos
     struct dirent *e;
-    char line[4096];
     while ((e = readdir(d)) != NULL) {
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
-        int n = snprintf(line, sizeof(line), "%s\n", e->d_name);
-        sendall(c, line, (size_t)n);
+        n = snprintf(buf, sizeof(buf),
+                     "<li><a href=\"%s/%s\">%s</a></li>",
+                     rel ? rel : ".", e->d_name, e->d_name);
+        sendall(c, buf, (size_t)n);
     }
+
     closedir(d);
+
+    // Fecha HTML
+    n = snprintf(buf, sizeof(buf), "</ul></body></html>");
+    sendall(c, buf, (size_t)n);
+    close(c);
 }
 
 static void handle(int c) {
